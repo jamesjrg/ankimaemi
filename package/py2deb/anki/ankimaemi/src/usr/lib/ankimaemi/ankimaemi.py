@@ -2,6 +2,7 @@
 #
 # ankimaemi - (c) 2009 Stefan Sayer
 # based on ankimini by Damien Elmes
+# updated by James Gregory 2010
 #
 # see http://ichi2.net/anki/ and http://anki.garage.maemo.org 
 #
@@ -10,7 +11,7 @@
 # sorry this code is so messy....its just hacked up....
 
 appname = "ankimaemi"
-appversion = "0.0.8"
+appversion = "0.0.9"
 
 import os
 os.environ["SDL_VIDEO_X11_WMCLASS"]=appname
@@ -26,7 +27,7 @@ import time, cgi, sys, os, re, subprocess
 from anki import DeckStorage as ds
 from anki.sync import SyncClient, HttpSyncServerProxy
 from anki.media import mediaRefs
-from anki.utils import parseTags, joinTags
+from anki.utils import addTags, deleteTags, canonifyTags
 
 from gnome import gconf
 
@@ -328,6 +329,9 @@ class AnkiMiniApp(hildon.Program):
                     f = "<u>" + f + "</u>"
             else:
                 n = "<u>" + n + "</u>"
+                
+        if self.deck.newEarly:
+            s['new'] = self.deck.newCount
 
         stats2 = ('%s+%s+%s' % (f,r,n)) % s
         self.statslabel.set_markup(stats)
@@ -389,12 +393,12 @@ body { margin-top: 0px; padding: 0px; }
     def set_question(self):
       # get new card
         self.opbuttonsbox.show()
-        c = self.deck.getCard(orm=False)
+        c = self.deck.getCard()
         if not c:
           # try once more after refreshing queue
             self.deck._countsDirty = True
             self.deck.checkDue()
-            c = self.deck.getCard(orm=False)
+            c = self.deck.getCard()
             if not c:
                 self.answerbuttonbox.hide()
                 self.resultbuttonbox.hide()
@@ -414,7 +418,7 @@ body { margin-top: 0px; padding: 0px; }
         else:
             self.savebuttonlabel.set_markup('save')
 
-        if self.currentCard and "marked" in self.currentCard.tags.lower():
+        if self.currentCard and self.currentCard.hasTag("Marked"):
             self.markbuttonlabel.set_markup('<span color="red">mark</span>')
         else:
             self.markbuttonlabel.set_markup('mark')
@@ -422,7 +426,7 @@ body { margin-top: 0px; padding: 0px; }
 
     def set_q_a(self):
         if not self.currentCard:
-            self.currentCard = deck.getCard(orm=False)
+            self.currentCard = deck.getCard()
         c = self.currentCard
 
         self.opbuttonsbox.show()
@@ -438,7 +442,15 @@ body { margin-top: 0px; padding: 0px; }
 
     def answer(self, q):
         if self.currentCard:
+            # force refresh of card then remove from session as we update in pure sql
+            self.deck.s.refresh(self.currentCard)
+            self.deck.s.refresh(self.currentCard.fact)
+            self.deck.s.refresh(self.currentCard.cardModel)
+            self.deck.s.expunge(self.currentCard)
+            
             self.deck.answerCard(self.currentCard, int(q))
+            
+            self.currentCard = None
 
     def prepareMedia(self, string, auto=True):
         for (fullMatch, filename, replacementString) in mediaRefs(string):
@@ -552,6 +564,20 @@ Fetching summary from server..<br>
 #        self.err_dlg("Open recent: %s" % cmd)
 
 
+    def doMark(self):
+        if self.currentCard.hasTag("Marked"):
+                self.currentCard.fact.tags = canonifyTags(deleteTags(
+                    "Marked", self.currentCard.fact.tags))
+        else:
+            self.currentCard.fact.tags = canonifyTags(addTags(
+                "Marked", self.currentCard.fact.tags))
+                
+        self.currentCard.fact.setModified(textChanged=True)
+        self.deck.updateFactTags([self.currentCard.fact.id])
+        for card in self.currentCard.fact.cards:
+            self.deck.updatePriority(card)
+        self.deck.setModified()
+        
     def opbutclick(self, widget, cmd):
         if cmd == 'save':
             if self.deck:
@@ -596,22 +622,17 @@ Fetching summary from server..<br>
             self.set_question()
             self.set_stats()
         elif cmd == 'mark':
-            if "marked" in self.currentCard.tags.lower():
-                t = parseTags(self.currentCard.tags)
-                t.remove("Marked")
-                self.currentCard.tags = joinTags(t)
-            else:
-                self.currentCard.tags = joinTags(parseTags(self.currentCard.tags) + ["Marked"])
-            self.currentCard.toDB(self.deck.s)
-            if self.currentCard and "marked" in self.currentCard.tags.lower():
+            self.doMark()
+            if self.currentCard and self.currentCard.hasTag("Marked"):
                 self.markbuttonlabel.set_markup('<span color="red">mark</span>')
             else:
                 self.markbuttonlabel.set_markup('mark')
         elif cmd == 'learnmore':
-            self.deck.extraNewCards += 5
+            self.deck.newEarly = True
 
             self.deck.refresh()
-            self.deck.updateAllPriorities()
+            #removed - I believe unnecessary
+            #self.deck.updateAllPriorities()
             self.deck.rebuildCounts()
             self.deck.rebuildQueue()
             self.set_question()
