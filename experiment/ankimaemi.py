@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2.5
 #
 # ankimaemi - (c) 2009 Stefan Sayer
 # based on ankimini by Damien Elmes
@@ -13,51 +13,31 @@
 appname = "ankimaemi"
 appversion = "0.0.9"
 
-MAEMO = False
-try:
-    import hildon
-    MAEMO = True
-except:
-    pass
+import random
+cardywardies = []
 
-if MAEMO:
-    import os
-    os.environ["SDL_VIDEO_X11_WMCLASS"]=appname
-    import osso
+import os
+os.environ["SDL_VIDEO_X11_WMCLASS"]=appname
+import osso
 
-    osso_c = osso.Context(appname, appversion, False)
-    
-    from gnome import gconf
-    gtk.set_application_name(appname)
-else:
-    #not imported from under gnome
-    import gconf
-    
-    #add anki lib to Python path
-    import sys
-    sys.path.append('/usr/share/anki')
-    
-    #fake hildon module
-    class hildon:
-        class Program:
-            def __init__(self):
-                pass
-            
-        @classmethod
-        def Window(cls):
-            return gtk.Window(gtk.WINDOW_TOPLEVEL)
+osso_c = osso.Context(appname, appversion, False)
 
 import gtkhtml2
 import gtk
-    
+import hildon
+
 import time, cgi, sys, os, re, subprocess
 from anki import DeckStorage as ds
 from anki.sync import SyncClient, HttpSyncServerProxy
 from anki.media import mediaRefs
 from anki.utils import addTags, deleteTags, canonifyTags
 
+from gnome import gconf
+
 def request_object(*args):
-    print 'request object', args  
+    print 'request object', args
+
+gtk.set_application_name(appname)
 
 class AnkiMiniApp(hildon.Program):
 
@@ -88,8 +68,7 @@ class AnkiMiniApp(hildon.Program):
         self.window_in_fullscreen = False 
         self.window.set_title("")
 
-        if MAEMO:
-            self.add_window(self.window)
+        self.add_window(self.window)
         self.mainbox = gtk.VBox(False, 0)
         self.window.add(self.mainbox)
 
@@ -242,19 +221,7 @@ class AnkiMiniApp(hildon.Program):
         self.menu.append(menuItemSyncSettings)
         self.menu.append(menuItemSeparator1)
         self.menu.append(menuItemExit)
-        
-        if MAEMO:
-            self.window.set_menu(self.menu)
-        else:
-            self.menu_bar = gtk.MenuBar()
-            self.menu_bar.show()
-            
-            root_item = gtk.MenuItem("Menu")
-            root_item.show()
-            root_item.set_submenu(self.menu)
-            self.menu_bar.append(root_item)
-            
-            self.mainbox.pack_start(self.menu_bar, False, True, 0)
+        self.window.set_menu(self.menu)
 
     def set_window_empty(self):
         self.opbuttonsbox.hide()
@@ -345,6 +312,8 @@ class AnkiMiniApp(hildon.Program):
             self.set_window_empty()
         else:
             if self.init_deck():
+                #for i in range(5):
+                #    cardywardies.append(self.deck.getCard())
                 self.set_question()
                 self.set_stats()
         gtk.main()
@@ -386,15 +355,15 @@ class AnkiMiniApp(hildon.Program):
                 self.window.unfullscreen ()
             else:
                 self.window.fullscreen ()
-        # zoom in
-        elif event.keyval == gtk.keysyms.F7:
-            self.card_font_size += 3
-            if self.redraw_func:
-                self.redraw_func()
-        elif event.keyval == gtk.keysyms.F8:
-            self.card_font_size -= 3
-            if self.redraw_func:
-                self.redraw_func()
+	# zoom in
+	elif event.keyval == gtk.keysyms.F7:
+		self.card_font_size += 3
+		if self.redraw_func:
+			self.redraw_func()
+	elif event.keyval == gtk.keysyms.F8:
+		self.card_font_size -= 3
+		if self.redraw_func:
+			self.redraw_func()
 		
 
 
@@ -429,6 +398,7 @@ body { margin-top: 0px; padding: 0px; }
     def set_question(self):
       # get new card
         self.opbuttonsbox.show()
+        #c = random.choice(cardywardies)
         c = self.deck.getCard()
         if not c:
           # try once more after refreshing queue
@@ -478,14 +448,6 @@ body { margin-top: 0px; padding: 0px; }
 
     def answer(self, q):
         if self.currentCard:
-            # force refresh of card then remove from session as we update in pure sql
-            self.deck.s.refresh(self.currentCard)
-            self.deck.s.refresh(self.currentCard.fact)
-            self.deck.s.refresh(self.currentCard.cardModel)
-            self.deck.s.expunge(self.currentCard)
-            
-            self.deck.answerCard(self.currentCard, int(q))
-            
             self.currentCard = None
 
     def prepareMedia(self, string, auto=True):
@@ -574,8 +536,7 @@ Fetching summary from server..<br>
             self.deck.s.commit()
         
     def deck_save(self):
-        self.print_html_doc("<center><br/><br/>saving %s...</center>" % self.DECK_PATH)
-        self.deck.save()        
+        pass
 
     def replace_deck_with_file(self, fname):
         if self.deck:
@@ -682,8 +643,6 @@ Fetching summary from server..<br>
             self.deck.rebuildQueue()
             self.set_question()
             self.set_stats()
-
-
 
     def resclick(self, widget, number):
         self.answer(number)

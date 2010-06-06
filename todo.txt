@@ -1,0 +1,4 @@
+- make menu bar appear at the top of the screen in desktop, not bottom
+- add timing infrastructure
+- add pre caching next card (or perhaps next several cards?)
+
